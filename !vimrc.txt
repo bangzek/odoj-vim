@@ -1,0 +1,7 @@
+let sdcard = expand('<sfile>:p:h')
+execute 'command G341 $r '.sdcard.'/Documents/\#341/\!Map.txt | $'
+execute 'source '.sdcard.'/odoj.vim'
+let ODOJ.juz_urut = 0
+
+set noet ts=2
+set wh=999
