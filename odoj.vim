@@ -423,8 +423,9 @@ function Qstat()
   %y*
 endfunction
 
-command Besok call Besok()
-function Besok()
+command Besok call besok.run()
+let besok = {}
+function besok.run() dict
   if !Check()
     return
   endif
@@ -451,7 +452,8 @@ function Besok()
   2,3s/\v<\d\d?>/\=Njuz(submatch(0))/g
 
   " hapus baris bayar hutang
-  silent! g/⬅/d
+  let self.paid = {}
+  silent! g /\v⬅ ([^:]+):/ call self.bayar()
 
   " catat baris juz
   3/\v(◻|⌚|✅)/
@@ -463,27 +465,33 @@ function Besok()
   %s/\v[ \t]+$//e
 
   " hutang +1
-  %s/\v◻ ([^:]+:[ \t]+J)(\d+) [(]-(\d+)[)]/\='◻ '.submatch(1).
-    \ Fnum(Njuz(+submatch(2))).' (-'.(submatch(3)+1).')*'/e
-  %s/\v⌚ ([^:]+:[ \t]+J)(\d+) [(]-(\d+)[)]/\='◻ '.submatch(1).
-    \ Fnum(Njuz(+submatch(2))).' (-'.(submatch(3)+1).')'/e
+  %s/\v◻ ([^:]+):([ \t]+J)(\d+) [(]-(\d+)[)]/\='◻ '.submatch(1).':'.
+    \ submatch(2).Fnum(Njuz(+submatch(3))).' (-'.(submatch(4)+1).')'.
+    \ get(self.paid, submatch(1), '*')/e
+  %s/\v⌚ ([^:]+):([ \t]+J)(\d+) [(]-(\d+)[)]/\='◻ '.submatch(1).':'.
+    \ submatch(2).Fnum(Njuz(+submatch(3))).' (-'.(submatch(4)+1).')'.
+    \ get(self.paid, submatch(1), '+')/e
   " hutang 1
-  %s/\v◻ ([^:]+:[ \t]+J)(\d+)$/\='◻ '.submatch(1).
-    \ Fnum(Njuz(+submatch(2))).' (-1)*'/e
-  %s/\v⌚ ([^:]+:[ \t]+J)(\d+)$/\='◻ '.submatch(1).
-    \ Fnum(Njuz(+submatch(2))).' (-1)'/e
+  %s/\v◻ ([^:]+):([ \t]+J)(\d+)$/\='◻ '.submatch(1).':'.
+    \ submatch(2).Fnum(Njuz(+submatch(3))).' (-1)'.
+    \ get(self.paid, submatch(1), '*')/e
+  %s/\v⌚ ([^:]+):([ \t]+J)(\d+)$/\='◻ '.submatch(1).':'.
+    \ submatch(2).Fnum(Njuz(+submatch(3))).' (-1)'.
+    \ get(self.paid, submatch(1), '+')/e
   " tanpa hutang
   %s/\v✅ ([^:]+:[ \t]+J)(\d+)/\='◻ '.submatch(1).
     \ Fnum(Njuz(+submatch(2)))/e
+
+  unlet self.paid
   " tak ada orangnya
   silent! g/\v◻ --:/s/ *(-[0-9]\+)//
   " kecepetan :)
-  let s:earlies = ['']
-  silent! g/➡/call s:Earlies()
-  if len(s:earlies) > 1
-    call append('$', s:earlies)
+  let self.saving = ['']
+  silent! g /➡/ call self.nabung()
+  if len(self.saving) > 1
+    call append('$', self.saving)
   endif
-  unlet s:earlies
+  unlet self.saving
 
   " pindahkan juz 01 ke baris awal
   if g:ODOJ.juz_urut
@@ -495,10 +503,16 @@ function Besok()
   %y*
 endfunction
 
-function s:Earlies()
+function besok.bayar() dict
+  let m = matchlist(getline('.'), @/)
+  let self.paid[m[1]] = ''
+  delete
+endfunction
+
+function besok.nabung() dict
   s/^➡ /__/
   s/\v-(\d+)/\='-'.(1+submatch(1))/e
   s/@[0-9.:]\+$/&-1/e
-  call add(s:earlies, getline('.'))
+  call add(self.saving, getline('.'))
   delete
 endfunction
