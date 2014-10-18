@@ -147,15 +147,15 @@ function jahit.run() dict
   " catat juz
   let self.loc = {}
   let self.mark = ''
-  g/\v(◻|✅|➡) ([^:]+):/call self.mark_juz()
+  g /\v(◻|⌚|✅|➡) ([^:]+):/ call self.mark_juz()
 
   " proses map nama
   let self.map = {}
-  g/^ *%/call self.parse_map()
+  g /\v^ *\% *([a-zA-Z][^:]*[^: ]) *: *([a-zA-Z][a-zA-Z'. ]{,13}[a-zA-Z.]) *$/ call self.parse_map()
 
   " proses laporan
   let self.lines = {}
-  g/\v^__[^:]+: .+/call self.parse_wa()
+  g /\v^__([^:]+): (.+)/ call self.parse_wa()
   for [k, v] in items(self.lines)
     call append(line("'" . self.loc[k]), v)
   endfor
@@ -170,14 +170,12 @@ function jahit.run() dict
 endfunction
 
 function jahit.mark_juz() dict
-  let m = matchlist(getline('.'), '\v(◻|⌚|✅|➡) ([^:]+):')
-  if len(m) > 0
-    let name = tolower(m[2])
-    if !has_key(self.loc, name)
-      let self.loc[name] = self.incr_mark()
-    endif
-    execute 'mark ' . self.loc[name]
+  let m = matchlist(getline('.'), @/)
+  let name = tolower(m[2])
+  if !has_key(self.loc, name)
+    let self.loc[name] = self.incr_mark()
   endif
+  execute 'mark ' . self.loc[name]
 endfunction
 
 function jahit.incr_mark() dict
@@ -194,27 +192,21 @@ function jahit.incr_mark() dict
 endfunction
 
 function jahit.parse_map() dict
-  let m = matchlist(getline('.'),
-        \ '\v^ *\% *([a-zA-Z][^:]*[^: ]) *: *'.
-        \ '([a-zA-Z][a-zA-Z''. ]{,13}[a-zA-Z.]) *$')
-  if len(m) > 0
-    let self.map[tolower(m[1])] = tolower(m[2])
-    delete
-  endif
+  let m = matchlist(getline('.'), @/)
+  let self.map[tolower(m[1])] = tolower(m[2])
+  delete
 endfunction
 
 function jahit.parse_wa() dict
-  let m = matchlist(getline('.'), '\v^__([^:]+): (.+)')
-  if len(m) > 0
-    let name = tolower(m[1])
-    if has_key(self.loc, name)
-      call self.add_line(name, m[2])
-    elseif has_key(self.map, name)
-      if has_key(self.loc, self.map[name])
-        call self.add_line(self.map[name], m[2])
-      else
-        execute 's/\v__([^:]+):/__'. escape(self.map[name], '/').':'
-      endif
+  let m = matchlist(getline('.'), @/)
+  let name = tolower(m[1])
+  if has_key(self.loc, name)
+    call self.add_line(name, m[2])
+  elseif has_key(self.map, name)
+    if has_key(self.loc, self.map[name])
+      call self.add_line(self.map[name], m[2])
+    else
+      execute 's/\v__([^:]+):/__'. escape(self.map[name], '/').':'
     endif
   endif
 endfunction
@@ -231,6 +223,7 @@ command Check call Check()
 function Check()
   "✅ check the uniqueness of juz in a name
   "✅ check the last sign for each name is correct
+  " if g:ODOJ.juz_urut = 1
   "✅ check the uniqueness of juz
   "✅ check all 30 juz present
   let s:c = {
@@ -243,7 +236,7 @@ function Check()
 \   'no': 0,
 \ }
 
-  g /\v(⬅|◻|⌚|✅|➡) [^:]+:[ \t]+J\d+/ call s:each_check()
+  g /\v(⬅|◻|⌚|✅|➡) ([^:]+):[ \t]+J(\d+)/ call s:each_check()
   call s:post_check()
   " check all 30 juz present
   if len(s:c.jn_map)
@@ -275,7 +268,7 @@ endfunction
 function s:each_check()
   let no = line('.')
   let line = getline(no)
-  let m = matchlist(line, '\v(⬅|◻|⌚|✅|➡) ([^:]+):[ \t]+J(\d+)')
+  let m = matchlist(line, @/)
   if len(m) > 0
     let sign = m[1]
     let name = m[2]
@@ -371,10 +364,10 @@ function Stat()
   " p : perpanjangan
   " t : tanpa kabar
 
-  g /\v◻ [^:]+:/ call s:each_blank_stat()
-  g /\v⌚ [^:]+:/ call s:each_time_stat()
-  g /\v⬅ [^:]+:/ call s:each_debt_stat()
-  g /\v✅ [^:]+:/ call s:each_done_stat()
+  g /\v◻ ([^:]+):/ call s:each_stat('t')
+  g /\v⌚ ([^:]+):/ call s:each_stat('p')
+  g /\v⬅ ([^:]+):/ call s:each_stat('h')
+  g /\v✅ ([^:]+):/ call s:each_stat('k')
 
   let member = 0
   let stats = {'k':0, 'h':0, 'p':0, 't':0}
@@ -416,38 +409,10 @@ function Stat()
   %y*
 endfunction
 
-function s:each_blank_stat()
-  let line = getline('.')
-  let m = matchlist(line, '\v◻ ([^:]+):')
-  if len(m) > 0
-    let s:status[m[1]] = 't'
-    delete
-  endif
-endfunction
-
-function s:each_time_stat()
-  let line = getline('.')
-  let m = matchlist(line, '\v⌚ ([^:]+):')
-  if len(m) > 0
-    let s:status[m[1]] = 'p'
-    delete
-  endif
-endfunction
-
-function s:each_debt_stat()
-  let m = matchlist(getline('.'), '\v⬅ ([^:]+):')
-  if len(m) > 0
-    let s:status[m[1]] = 'h'
-    delete
-  endif
-endfunction
-
-function s:each_done_stat()
-  let m = matchlist(getline('.'), '\v✅ ([^:]+):')
-  if len(m) > 0
-    let s:status[m[1]] = 'k'
-    delete
-  endif
+function s:each_stat(val)
+  let m = matchlist(getline('.'), @/)
+  let s:status[m[1]] = val
+  delete
 endfunction
 
 command Qstat call Qstat()
