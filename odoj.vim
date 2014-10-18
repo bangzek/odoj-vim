@@ -409,9 +409,9 @@ function Stat()
   %y*
 endfunction
 
-function s:each_stat(val)
+function s:each_stat(v)
   let m = matchlist(getline('.'), @/)
-  let s:status[m[1]] = val
+  let s:status[m[1]] = a:v
   delete
 endfunction
 
