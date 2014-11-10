@@ -73,7 +73,7 @@ endif
 " END: WA copas script
 
 " Script Settings
-let g:ODOJ = {'juz_urut':1}
+let g:ODOJ = {'juz_urut': 1, 'DEBUG': 0, 'Docdir': 'Documents'}
 
 " Format number to be left padded with zero
 function Fnum(n)
@@ -99,6 +99,16 @@ function Jdiff(a, b)
   else
     return a:a - a:b
   endif
+endfunction
+
+" To Blocked Number
+function NumB(str)
+  return tr(a:str, '1234567890', '1⃣2⃣3⃣4⃣5⃣6⃣7⃣8⃣9⃣0⃣')
+endfunction
+
+" From Blocked Number
+function NumA(str)
+  return tr(a:str, '1⃣2⃣3⃣4⃣5⃣6⃣7⃣8⃣9⃣0⃣', '1234567890')
 endfunction
 
 command WA call WA()
@@ -377,7 +387,7 @@ function Stat()
   endfor
   unlet s:status
 
-  if line('$') > 5
+  if line('$') > 5 && !g:ODOJ.DEBUG
     " delete the rest
     6,$d
   endif
@@ -515,4 +525,446 @@ function besok.nabung() dict
   s/@[0-9.:]\+$/&-1/e
   call add(self.saving, getline('.'))
   delete
+endfunction
+
+command Rload call Rload()
+function Rload()
+  1
+  let line = getline('.')
+  if line !~# '^='
+    echom "Invalid report load!"
+    return
+  endif
+  if !exists('g:SDCARD')
+    let g:SDCARD = expand('<sfile>:p:h')
+  endif
+  let dir = g:SDCARD.'/'. g:ODOJ.Docdir .'/'.line[1:]
+  if !isdirectory(dir)
+    echom 'Folder not found: '.dir
+    return
+  endif
+
+  if line('.') == line('$')
+    echom 'No file to load!'
+    return
+  endif
+
+  let list = []
+  while line('.') < line('$')
+    +1
+    let line = getline('.')
+    let clist = split(glob(dir.'/'.line.'*'), '\n')
+    if !len(clist)
+      echom 'File '.line.' not found!'
+      return
+    endif
+    call extend(list, clist)
+  endwhile
+
+  if !g:ODOJ.DEBUG
+    %d
+  endif
+  execute '$read '.escape(dir.'/!Raport.txt', ' #!')
+  for file in list
+    execute '$read '.escape(file, ' #!')
+  endfor
+endfunction
+
+command Raport call raport.run()
+let raport = {}
+function raport.run() dict
+  call self.reset()
+
+  " parse template
+  g /\v^(\d\d)\. ([^:]+):(\t+)📝/ call self.parse_template()
+
+  " make search not wrap to top
+  let old_ws = &wrapscan
+  set nowrapscan
+  " search all day result from the top
+  let fail = 0
+  let v:errmsg = ''
+  silent! 0 /\v^\@?(14\d\d\.\d\d).(\d\d) Tilawah (\S+)/
+  while v:errmsg ==# ''
+    if !self.each()
+      let fail = 1
+      break
+    endif
+
+    let v:errmsg = ''
+    silent! -1 /\v^\@?(14\d\d\.\d\d).(\d\d) Tilawah (\S+)/
+  endwhile
+  let &wrapscan = old_ws
+  if fail
+    return
+  endif
+
+  " clean blank line
+  1
+  g /^\s*$/ d
+  " clean the rest
+  if !g:ODOJ.DEBUG && line('$') != 1
+    %d
+  endif
+
+  " output
+  call append(0, self.output())
+
+  " hapus baris kosong di akhir
+  if getline('$') =~# '\v^\s*$'
+    $d
+  endif
+
+  " copy ke clipboard
+  %y*
+endfunction
+
+function raport.reset() dict
+  let self.member = {}
+  let self.names = []
+  let self.nday = 0
+  let self.serial = ''
+  let self.week = 0
+  let self.day_beg = ''
+  let self.day_end = ''
+  let self.hday_beg = 0
+  let self.hday_end = 0
+  let self.mday_beg = 0
+  let self.mday_end = 0
+  let self.hmon_beg = ''
+  let self.hmon_end = ''
+  let self.mmon_beg = ''
+  let self.mmon_end = ''
+  let self.hyear_beg = 0
+  let self.hyear_end = 0
+  let self.myear_beg = 0
+  let self.myear_end = 0
+  let self.group = ''
+  let self.total = 0
+  let self.ranks = {'🎓': 0, '📗': 0, '📙': 0, '📕': 0}
+endfunction
+
+function raport.parse_template() dict
+  let m = matchlist(getline('.'), @/)
+  let self.member[m[2]] = {
+  \    'no': m[1],
+  \  'name': m[2],
+  \ 'space': m[3],
+  \   'day': [],
+  \}
+  call add(self.names, m[2])
+  delete
+endfunction
+
+function raport.each() dict
+  let m = matchlist(getline('.'), @/)
+  let self.nday += 1
+  if !len(self.serial)
+    let self.week = float2nr(ceil(+m[2] / 7.0))
+    let self.serial = m[1].'-'.self.week
+  endif
+  if !len(self.day_beg)
+    let self.day_beg = m[3]
+  endif
+  let self.day_end = m[3]
+  delete
+
+  " next line is hijri date
+  let m = matchlist(getline('.'), '\v^\t(\d\d?) (\S+) (\d+)H')
+  if !len(m)
+    return
+  end
+  if !self.hyear_beg
+    let self.hday_beg = +m[1]
+    let self.hmon_beg  = m[2]
+    let self.hyear_beg = m[3]
+  end
+  let self.hday_end = +m[1]
+  let self.hmon_end  = m[2]
+  let self.hyear_end = m[3]
+  delete
+
+  " next line is masehi date
+  let m = matchlist(getline('.'), '\v^\t(\d\d?) (\S+) (\d+)')
+  if !len(m)
+    return
+  end
+  if !self.myear_beg
+    let self.mday_beg = +m[1]
+    let self.mmon_beg  = m[2]
+    let self.myear_beg = m[3]
+  end
+  let self.mday_end = +m[1]
+  let self.mmon_end  = m[2]
+  let self.myear_end = m[3]
+  delete
+
+  " next line is group line
+  if !len(self.group)
+    let self.group = getline('.')
+  end
+  delete
+
+  for user in keys(self.member)
+    call add(self.member[user].day, {'done':0, 'at':[]})
+  endfor
+
+  " find juz line
+  -1 /\v(⬅|◻|⌚|✅) ([^:]+):/
+
+  return self.process_juz()
+endfunction
+
+function raport.process_juz() dict
+  let m = matchlist(getline('.'), @/)
+  while len(m)
+    let sign = m[1]
+    let user = m[2]
+    if has_key(self.member, user)
+      let rec = self.member[user].day[self.nday - 1]
+      if sign ==# '⬅' || sign ==# '✅'
+        let rec.done = sign ==# '✅'
+        let m = matchlist(getline('.'), '\v\@(\d+)')
+        if !len(m)
+          return
+        endif
+        call add(rec.at, +m[1])
+      endif
+      delete
+    else
+      +1
+    endif
+
+    let m = matchlist(getline('.'), '\v(⬅|◻|⌚|✅|➡) ([^:]+):')
+  endwhile
+  return 1
+endfunction
+
+function raport.output() dict
+  let shmon = {
+  \ 'Muharram':       'Muhrrm',
+  \ 'Safar':          'Safar',
+  \ 'Rabiul Awal':    'Rab Aw',
+  \ 'Rabiul Akhir':   'Rab Akh',
+  \ 'Jumadil Awal':   'Jum Aw',
+  \ 'Jumadil Akhir':  'Jum Akh',
+  \ 'Rajab':          'Rajab',
+  \ "Sya'ban":        "Sya'ban",
+  \ 'Ramadhan':       'Ramdhn',
+  \ 'Syawal':         'Syawal',
+  \ 'Dzulqaidah':     'Dzulq',
+  \ 'Dzulhijjah':     'Dzulh',
+  \}
+  let smmon = {
+  \ 'Januari':    'Jan',
+  \ 'Februari':   'Feb',
+  \ 'Maret':      'Mar',
+  \ 'April':      'Apr',
+  \ 'Mei':        'Mei',
+  \ 'Juni':       'Jun',
+  \ 'Juli':       'Jul',
+  \ 'Agustus':    'Agu',
+  \ 'September':  'Sep',
+  \ 'Oktober':    'Okt',
+  \ 'November':   'Nov',
+  \ 'Desember':   'Des',
+  \}
+
+  let out = [
+  \ '=' . self.serial . ' Raport ',
+  \ "\t" . self.day_beg . '–' . self.day_end,
+  \ "\t",
+  \ "\t",
+  \ self.group,
+  \]
+
+  if self.nday < 7
+    let out[0] .= 'Sementara'
+  else
+    let out[0] .= 'Pekan ke-' . self.week
+  endif
+
+  if self.hyear_beg == self.hyear_end
+    if self.hmon_beg == self.hmon_end
+      let out[2] .= printf('%s–%s %s %dH',
+        \ Fnum(self.hday_beg), Fnum(self.hday_end), self.hmon_beg, self.hyear_beg)
+    else
+      let out[2] .= printf('%s %s–%s %s %dH',
+        \ Fnum(self.hday_beg), shmon[self.hmon_beg],
+        \ Fnum(self.hday_end), shmon[self.hmon_end], self.hyear_beg)
+    endif
+  else
+    let out[2] .= printf('%s %s %dH–%s %s %dH',
+      \ Fnum(self.hday_beg), shmon[self.hmon_beg], self.hyear_beg,
+      \ Fnum(self.hday_end), shmon[self.hmon_end], self.hyear_end)
+  endif
+
+  if self.myear_beg == self.myear_end
+    if self.mmon_beg == self.mmon_end
+      let out[3] .= printf('%s–%s %s %d',
+        \ Fnum(self.mday_beg), Fnum(self.mday_end), self.mmon_beg, self.myear_beg)
+    else
+      let out[3] .= printf('%s %s–%s %s %d',
+        \ Fnum(self.mday_beg), smmon[self.mmon_beg],
+        \ Fnum(self.mday_end), smmon[self.mmon_end], self.myear_beg)
+    endif
+  else
+    let out[2] .= printf('%s %s %d–%s %s %d',
+      \ Fnum(self.mday_beg), smmon[self.mmon_beg], self.myear_beg,
+      \ Fnum(self.mday_end), smmon[self.mmon_end], self.myear_end)
+  endif
+
+  for name in self.names
+    let user = self.member[name]
+" TODO: add time grid
+" 🕛🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚
+" 🌙☀🔹
+    let sval = 0
+    let jval = 0
+    let srow = ''
+    let jrow = ''
+    for d in user.day
+      if len(d.at)
+        if d.done
+          let sval += 2
+          let srow .= '✅'
+        else
+          let sval += 1
+          let srow .= '☑'
+        endif
+        let jval += len(d.at)
+        let jrow .= NumB(len(d.at))
+      else
+        let srow .= '◻'
+        let jrow .= '➖'
+      endif
+    endfor
+    let total = sval + jval
+    let rank = self.rank(total)
+    let self.total += min([total, 3 * self.nday])
+    let self.ranks[rank] += 1
+
+    call add(out, '')
+    call add(out, printf('%s. %s:%s📝%s%s',
+            \ user.no, user.name, user.space, NumB(Fnum(total)), rank))
+    call add(out, printf("\t\t%s: %02d", srow, sval))
+    call add(out, printf("\t\t%s: %02d", jrow, jval))
+  endfor
+
+  let avg = self.total / floor(len(self.names))
+  let davg = avg / self.nday
+  call add(out, '')
+  call add(out, printf("Nilai Rata-Rata: %.1f (%.2f/hari)", avg, davg))
+  call add(out, printf("🎓%d 📗%d 📙%d 📕%d",
+          \ self.ranks['🎓'], self.ranks['📗'],
+          \ self.ranks['📙'], self.ranks['📕']))
+
+  return out
+endfunction
+
+function raport.rank(num) dict
+  if a:num >= 3 * self.nday
+    return '🎓'
+  elseif a:num >= ceil(16 / 7.0 * self.nday)
+    return '📗'
+  elseif a:num >= ceil(11 / 7.0 * self.nday)
+    return '📙'
+  else
+    return '📕'
+  endif
+endfunction
+
+command Nilai call Nilai()
+function Nilai()
+  g!/^\d/d
+  %s/.*📝//
+  %s/[🎓📗📙📕]//
+  g /\v(1⃣|2⃣|3⃣|4⃣|5⃣|6⃣|7⃣|8⃣|9⃣|0⃣)/ call setline('.', NumA(getline('.')))
+	%y*
+endfunction
+
+let split = {}
+command Split call split.run()
+function split.run() dict
+  " make search not wrap to top
+  let old_ws = &wrapscan
+  set nowrapscan
+
+  let self.index = 0
+  let self.list = []
+  let v:errmsg = ''
+  silent! 0 /^\s*$/
+  while v:errmsg ==# ''
+    silent! 1,-1d
+    call add(self.list, split(@", '\n'))
+    silent! d
+
+    let v:errmsg = ''
+    silent! /^\s*$/
+  endwhile
+  if line('$') > 1
+    silent! %d
+    call add(self.list, split(@", '\n'))
+  endif
+  call self.render()
+
+  let &wrapscan = old_ws
+endfunction
+
+function split.render() dict
+  silent! %d
+  call setline(1, self.list[self.index])
+  %y*
+endfunction
+
+command Sprev call split.prev()
+function split.prev() dict
+  if !len(self.list)
+    echom ':Split dulu!'
+    return
+  endif
+
+  if !self.index
+    echom 'Awal!'
+  else
+    let self.index -= 1
+    call self.render()
+  endif
+endfunction
+
+command Snext call split.next()
+function split.next() dict
+  if !len(self.list)
+    echom ':Split dulu!'
+    return
+  endif
+
+  if self.index == len(self.list) - 1
+    echom 'Akhir!'
+  else
+    let self.index += 1
+    call self.render()
+  endif
+endfunction
+
+command Sfirst call split.first()
+function split.first() dict
+  if !len(self.list)
+    echom ':Split dulu!'
+    return
+  endif
+
+  let self.index = 0
+  call self.render()
+endfunction
+
+command Slast call split.last()
+function split.last() dict
+  if !len(self.list)
+    echom ':Split dulu!'
+    return
+  endif
+
+  let self.index = len(self.list) - 1
+  call self.render()
 endfunction

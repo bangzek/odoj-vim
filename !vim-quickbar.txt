@@ -8,6 +8,14 @@ u
 :Qstat
 :Besok
 :%y*
+:Rload
+:Raport
+:Nilai
+:Split
+:Sprev
+:Snext
+:Sfirst
+:Slast
 dd
 j
 p
